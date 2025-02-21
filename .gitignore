@@ -1,0 +1,21 @@
+# Logs
+*.log
+npm-debug.log*
+__screenshots__/
+
+# Dependencies
+node_modules/
+
+# Cache
+tsconfig.tsbuildinfo
+.cache
+dist/
+temp/
+build/
+coverage/
+
+# OS crap
+.DS_Store
+
+# Editors
+.vscode/
