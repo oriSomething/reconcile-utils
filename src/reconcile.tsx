@@ -1,227 +1,213 @@
-/* eslint-disable @typescript-eslint/no-explicit-any --
-   We check dynamic shapes, so it makes it easier */
+/**
+ * Based on ideas from TanStack's `replaceEqualDeep`
+ * @see https://github.com/TanStack/query/blob/main/packages/query-core/src/utils.ts#L251
+ */
 
 import type { ReadonlyDeep, Primitive } from "type-fest";
-import {
-  getDisplayTypeOf,
-  isDate,
-  isPlainObject,
-  isPrimitive,
-  isSet,
-  keys,
-} from "./utils/type-utils";
+import { getDisplayTypeOf, isPrimitive, keys } from "./utils/type-utils";
+import { CategoryType, getCategory } from "./utils/category";
 
-//#region contents
-const TYPE_UNSUPPORTED = 0;
-const TYPE_NIL = 1;
-const TYPE_OBJECT = 1 << 1;
-const TYPE_ARRAY = 1 << 2;
-const TYPE_PRIMITIVE = 1 << 3;
-const TYPE_DATE = 1 << 4;
-const TYPE_SET = 1 << 5;
-//#endregion
+type ReadonlySetItem<T> = T extends ReadonlySet<infer V> ? V : never;
+type ReadonlyMapItem<T> = T extends ReadonlyMap<unknown, infer V> ? V : never;
 
-//#region Utilties functions
-function getCategory(value: unknown): number {
-  if (value == null) return TYPE_NIL;
-  if (isPlainObject(value)) return TYPE_OBJECT;
-  if (Array.isArray(value)) return TYPE_ARRAY;
-  if (isDate(value)) return TYPE_DATE;
-  if (isSet(value)) return TYPE_SET;
-  if (isPrimitive(value)) return TYPE_PRIMITIVE;
-
-  return TYPE_UNSUPPORTED;
-}
-
-function assertSupportedType(value: unknown, key: PropertyKey | undefined) {
-  if (getCategory(value) === TYPE_UNSUPPORTED) {
-    if (key === undefined) {
-      throw new TypeError(
-        `reconcile(): get unsupported value ${getDisplayTypeOf(value)} which` +
-          ` isn't supported`,
-      );
-    } else {
-      throw new TypeError(
-        `reconcile(): The key ${JSON.stringify(String(key))} is` +
-          ` ${getDisplayTypeOf(value)} which isn't supported`,
-      );
-    }
+//#region Utilities
+/** @inline */
+function throwUnsupportedValue(value: unknown, key: Primitive): never {
+  if (key === undefined) {
+    throw new TypeError(
+      `reconcile(): get unsupported value ${getDisplayTypeOf(value)} which` +
+        ` isn't supported`,
+    );
   }
+
+  throw new TypeError(
+    `reconcile(): The key ${JSON.stringify(String(key))} is` +
+      ` ${getDisplayTypeOf(value)} which isn't supported`,
+  );
+}
+
+/** @inline */
+function castObject<T>(value: T): T & Record<PropertyKey, unknown> {
+  return value as T & Record<PropertyKey, unknown>;
+}
+
+/** @inline */
+function castArray<T>(value: T): T & unknown[] {
+  return value as T & unknown[];
 }
 //#endregion
 
+//#region reconcilers
 function reconcileValue<T>(
   current: NoInfer<T>,
   next: T,
-  key: PropertyKey | undefined,
+  displayKey: Primitive,
 ): T {
-  if (Object.is(current, next)) {
-    return current;
+  // In dev we prefer to throw early, so we won't miss unsupported types. So
+  // in production we bail early for same result, in development we first make
+  // sure no error made
+  if (!import.meta.env.DEV) {
+    if (current === next) return current;
   }
 
-  if (isPlainObject(current) && isPlainObject(next)) {
-    return reconcileObject(current, next);
+  const currentCategory = getCategory(current);
+  const nextCategory = getCategory(next);
+
+  if (currentCategory === CategoryType.UNSUPPORTED) {
+    return throwUnsupportedValue(current, displayKey);
+  }
+  if (nextCategory === CategoryType.UNSUPPORTED) {
+    return throwUnsupportedValue(next, displayKey);
   }
 
-  if (Array.isArray(current) && Array.isArray(next)) {
-    return reconcileArray(current, next);
+  if (import.meta.env.DEV) {
+    if (current === next) return current;
   }
 
-  if (isDate(current) && isDate(next)) {
-    if (current.getTime() === next.getTime()) {
-      return current;
-    }
+  // If not the same category we already know they cannot be the same
+  if (currentCategory !== nextCategory) return next;
 
-    return next;
-  }
+  switch (currentCategory) {
+    // For immutable values with no references, we can skip check
+    case CategoryType.NIL:
+    case CategoryType.PRIMITIVE:
+      return next;
 
-  if (isSet(current) && isSet(next)) {
-    return reconcileSet(current, next) satisfies ReadonlySet<any> as T;
-  }
+    case CategoryType.OBJECT:
+      return reconcileObject(castObject(current), castObject(next));
+    case CategoryType.ARRAY:
+      return reconcileArray(castArray(current), castArray(next));
+    case CategoryType.SET:
+      return reconcileSet(
+        current as ReadonlySet<ReadonlySetItem<T> & Primitive>,
+        next as ReadonlySet<ReadonlySetItem<T> & Primitive>,
+      ) satisfies ReadonlySet<Primitive> as T;
 
-  assertSupportedType(current, key);
-  assertSupportedType(next, key);
+    case CategoryType.MAP:
+      return reconcileMap(
+        current as ReadonlyMap<Primitive, ReadonlyMapItem<T>>,
+        next as ReadonlyMap<Primitive, ReadonlyMapItem<T>>,
+      ) satisfies ReadonlyMap<Primitive, ReadonlyMapItem<T>> as T;
 
-  return next;
-}
-
-function reconcileKey<T, K extends keyof T>(
-  current: T,
-  next: NoInfer<T>,
-  key: K,
-): T[K] {
-  return reconcileValue(current[key], next[key], key);
-}
-
-function reconcileArray<const T extends any[]>(current: T, next: T): T {
-  let nextCurrent;
-
-  // Delete items from array if `next` is smaller
-  if (current.length > next.length) {
-    nextCurrent ??= current.slice(0, next.length);
-    current.length = next.length;
-  }
-
-  for (let i = 0; i < next.length; i++) {
-    // Override items is changed
-    if (i < current.length) {
-      const nextCurrentValue = reconcileKey(current, next, i);
-      if (nextCurrentValue !== current[i]) {
-        nextCurrent ??= current.concat();
-        nextCurrent[i] = nextCurrentValue;
+    // In Date we only care if the it's the same timestamp
+    case CategoryType.DATE:
+      if ((current as Date).getTime() === (next as Date).getTime()) {
+        return current;
       }
-    }
-    // Add new items because `current` size is bigger
-    else {
-      nextCurrent ??= current.concat();
-      nextCurrent.push(next[i]);
-    }
+      return next;
+  }
+}
+
+function reconcileArray<const T extends unknown[]>(current: T, next: T): T {
+  const nextCurrent = next.concat();
+  let equalProperties = 0;
+
+  const length = Math.min(current.length, next.length);
+
+  for (let i = 0; i < length; i++) {
+    nextCurrent[i] = reconcileValue(current[i], next[i], i);
+    if (Object.is(nextCurrent[i], current[i])) equalProperties++;
   }
 
-  return (nextCurrent satisfies any[] | undefined as T | undefined) ?? current;
+  return next.length === current.length && current.length === equalProperties
+    ? current
+    : (nextCurrent as T);
 }
 
 function reconcileSet<T extends Primitive>(
   current: ReadonlySet<T>,
   next: ReadonlySet<T>,
 ): ReadonlySet<T> {
-  let nextCurrent;
+  const nextCurrent = new Set(next);
+  let equalProperties = 0;
 
-  // Delete items that aren't exist in `next`
-  for (const item of current) {
-    if (!isPrimitive(item) && !isDate(item)) {
+  for (const item of nextCurrent) {
+    if (!isPrimitive(item)) {
       throw new TypeError(
-        `reconcile(): Using Set supported only values that have on references`,
-      );
-    }
-    if (!next.has(item)) {
-      nextCurrent ??= new Set(current);
-      nextCurrent.delete(item);
-    }
-  }
-
-  // Add items from `next` that might not exist in `current`
-  for (const item of next) {
-    if (!isPrimitive(item) && !isDate(item)) {
-      throw new TypeError(
-        `reconcile(): Using Set supported only values that have on references`,
+        `reconcile(): Using Set is supported only with values that have no` +
+          ` references`,
       );
     }
 
-    if (!current.has(item)) {
-      nextCurrent ??= new Set(current);
-      nextCurrent.add(item);
+    if (current.has(item)) equalProperties++;
+  }
+
+  return current.size === next.size && current.size === equalProperties
+    ? current
+    : nextCurrent;
+}
+
+function reconcileMap<K extends Primitive, V>(
+  current: ReadonlyMap<K, V>,
+  next: ReadonlyMap<K, V>,
+): ReadonlyMap<K, V> {
+  const nextCurrent = new Map(next);
+  let equalProperties = 0;
+
+  for (const [key, value] of nextCurrent) {
+    if (!isPrimitive(key)) {
+      throw new TypeError(
+        `reconcile(): Using Map is supported only with keys that have no` +
+          ` references`,
+      );
+    }
+
+    if (current.has(key)) {
+      const currentValue = current.get(key)!;
+      const nextValue = reconcileValue(currentValue, value, key);
+
+      nextCurrent.set(key, nextValue);
+
+      if (Object.is(nextValue, currentValue)) {
+        equalProperties++;
+      }
     }
   }
 
-  return nextCurrent ?? current;
+  return current.size === nextCurrent.size && current.size === equalProperties
+    ? current
+    : nextCurrent;
 }
 
 function reconcileObject<T extends Record<PropertyKey, unknown>>(
   current: T,
   next: NoInfer<T>,
 ): T {
-  const currentKeys = new Set(keys(next));
-  const currentSymbols = new Set(Object.getOwnPropertySymbols(next));
-  let nextCurrent;
+  const currentKeys = new Set(keys(current));
+  const currentSymbols = new Set(Object.getOwnPropertySymbols(current));
+  const nextKeys = new Set(keys(next));
+  const nextSymbols = new Set(Object.getOwnPropertySymbols(next));
 
-  // Delete unexist keys in `current` from `draft`
-  for (const key of keys(current)) {
-    if (!currentKeys.has(key)) {
-      nextCurrent ??= { ...current };
-      delete nextCurrent[key];
+  const nextCurrent = { ...next };
+  let equalProperties = 0;
+
+  for (const key of nextKeys) {
+    if (currentKeys.has(key)) {
+      nextCurrent[key] = reconcileValue(current[key], next[key], key);
+      if (Object.is(nextCurrent[key], current[key])) equalProperties++;
     }
   }
 
-  // Delete unexist symbols in `current` from `draft`
-  for (const symbol of Object.getOwnPropertySymbols(current)) {
-    if (!currentSymbols.has(symbol)) {
-      nextCurrent ??= { ...current };
-      delete nextCurrent[symbol as keyof T];
+  for (const symbol of nextSymbols) {
+    if (currentSymbols.has(symbol)) {
+      (nextCurrent as Record<PropertyKey, unknown>)[symbol] = reconcileValue(
+        current[symbol],
+        next[symbol],
+        symbol,
+      );
+      if (Object.is(nextCurrent[symbol], current[symbol])) equalProperties++;
     }
   }
 
-  // Replace every `current` property value, with `next` property value if
-  // different
-  for (const key of currentKeys) {
-    // Key exist in current
-    if (Reflect.has(current, key)) {
-      const nextCurrentValue = reconcileKey(current, next, key);
-      if (nextCurrentValue !== current[key]) {
-        nextCurrent ??= { ...current };
-        nextCurrent[key] = nextCurrentValue;
-      }
-    }
-    // Key doesn't exist in `current`, so we assign the `next` value
-    else {
-      nextCurrent ??= { ...current };
-      nextCurrent[key] = next[key] as any;
-    }
-  }
-
-  // Replace every `current` own symbol value, with `next` symbol value if
-  // different
-  for (const symbol of currentSymbols) {
-    // Symbol exist in `current`
-    if (Reflect.has(current, symbol)) {
-      const nextCurrentValue = reconcileKey(current, next, symbol);
-      if (nextCurrentValue !== current[symbol as keyof T]) {
-        nextCurrent ??= { ...current };
-        nextCurrent[symbol as keyof T] = nextCurrentValue;
-      }
-    }
-    // Symbol doesn't exist in `current`, so we assign the `next` value
-    else {
-      nextCurrent ??= { ...current };
-      nextCurrent[symbol as keyof T] = next[symbol as keyof T] as any;
-    }
-  }
-
-  return nextCurrent ?? current;
+  return currentKeys.size === nextKeys.size &&
+    currentSymbols.size === nextSymbols.size &&
+    equalProperties === currentKeys.size + currentSymbols.size
+    ? current
+    : nextCurrent;
 }
+//#endregion
 
 /**
- * @todo Support Map
  * @returns The value of current if all values are the same
  */
 export function reconcile<T>(
@@ -231,23 +217,10 @@ export function reconcile<T>(
   const currentCategory = getCategory(current);
   const nextCategory = getCategory(next);
 
-  if (currentCategory === TYPE_UNSUPPORTED) {
-    throw new TypeError(
-      "reconcile(): `current` is of unsupported type" +
-        `\n\type: ${getDisplayTypeOf(current)}`,
-    );
-  }
-
-  if (nextCategory === TYPE_UNSUPPORTED) {
-    throw new TypeError(
-      "reconcile(): `next` is of unsupported type" +
-        `\n\type: ${getDisplayTypeOf(next)}`,
-    );
-  }
-
+  // We gaurd at root for the same type to prevent silly mistakes
   if (
-    currentCategory === TYPE_NIL ||
-    nextCategory === TYPE_NIL ||
+    currentCategory === CategoryType.NIL ||
+    nextCategory === CategoryType.NIL ||
     currentCategory === nextCategory
   ) {
     return reconcileValue(current, next, undefined);
@@ -257,6 +230,6 @@ export function reconcile<T>(
     "reconcile(): `current` or `next` must be of the same kind and from" +
       "the same type. But got:" +
       `\n\tcurrent: ${getDisplayTypeOf(current)}` +
-      `\n\tnexts: ${getDisplayTypeOf(next)}`,
+      `\n\tnext: ${getDisplayTypeOf(next)}`,
   );
 }

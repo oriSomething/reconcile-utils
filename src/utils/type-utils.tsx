@@ -1,3 +1,5 @@
+import type { Primitive } from "type-fest";
+
 const PRIMITIVES = new Set([
   "boolean",
   "number",
@@ -55,6 +57,13 @@ export function isPlainObject(
 export function isSet(value: unknown): value is Set<any> {
   return (
     value != null && (value instanceof Set || getTagToString(value) === "Set")
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isMap(value: unknown): value is Map<Primitive, any> {
+  return (
+    value != null && (value instanceof Map || getTagToString(value) === "Map")
   );
 }
 
