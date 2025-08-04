@@ -5,7 +5,17 @@
 
 import type { ReadonlyDeep, Primitive } from "type-fest";
 import { getDisplayTypeOf, isPrimitive, keys } from "./utils/type-utils";
-import { CategoryType, getCategory } from "./utils/category";
+import {
+  CATEGORY_ARRAY,
+  CATEGORY_DATE,
+  CATEGORY_MAP,
+  CATEGORY_NIL,
+  CATEGORY_OBJECT,
+  CATEGORY_PRIMITIVE,
+  CATEGORY_SET,
+  CATEGORY_UNSUPPORTED,
+  getCategory,
+} from "./utils/category";
 
 type ReadonlySetItem<T> = T extends ReadonlySet<infer V> ? V : never;
 type ReadonlyMapItem<T> = T extends ReadonlyMap<unknown, infer V> ? V : never;
@@ -53,10 +63,10 @@ function reconcileValue<T>(
   const currentCategory = getCategory(current);
   const nextCategory = getCategory(next);
 
-  if (currentCategory === CategoryType.UNSUPPORTED) {
+  if (currentCategory === CATEGORY_UNSUPPORTED) {
     return throwUnsupportedValue(current, displayKey);
   }
-  if (nextCategory === CategoryType.UNSUPPORTED) {
+  if (nextCategory === CATEGORY_UNSUPPORTED) {
     return throwUnsupportedValue(next, displayKey);
   }
 
@@ -69,28 +79,28 @@ function reconcileValue<T>(
 
   switch (currentCategory) {
     // For immutable values with no references, we can skip check
-    case CategoryType.NIL:
-    case CategoryType.PRIMITIVE:
+    case CATEGORY_NIL:
+    case CATEGORY_PRIMITIVE:
       return next;
 
-    case CategoryType.OBJECT:
+    case CATEGORY_OBJECT:
       return reconcileObject(castObject(current), castObject(next));
-    case CategoryType.ARRAY:
+    case CATEGORY_ARRAY:
       return reconcileArray(castArray(current), castArray(next));
-    case CategoryType.SET:
+    case CATEGORY_SET:
       return reconcileSet(
         current as ReadonlySet<ReadonlySetItem<T> & Primitive>,
         next as ReadonlySet<ReadonlySetItem<T> & Primitive>,
       ) satisfies ReadonlySet<Primitive> as T;
 
-    case CategoryType.MAP:
+    case CATEGORY_MAP:
       return reconcileMap(
         current as ReadonlyMap<Primitive, ReadonlyMapItem<T>>,
         next as ReadonlyMap<Primitive, ReadonlyMapItem<T>>,
       ) satisfies ReadonlyMap<Primitive, ReadonlyMapItem<T>> as T;
 
     // In Date we only care if the it's the same timestamp
-    case CategoryType.DATE:
+    case CATEGORY_DATE:
       if ((current as Date).getTime() === (next as Date).getTime()) {
         return current;
       }
@@ -219,8 +229,8 @@ export function reconcile<T>(
 
   // We gaurd at root for the same type to prevent silly mistakes
   if (
-    currentCategory === CategoryType.NIL ||
-    nextCategory === CategoryType.NIL ||
+    currentCategory === CATEGORY_NIL ||
+    nextCategory === CATEGORY_NIL ||
     currentCategory === nextCategory
   ) {
     return reconcileValue(current, next, undefined);

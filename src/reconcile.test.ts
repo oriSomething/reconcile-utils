@@ -255,7 +255,7 @@ describe("reconcile", function () {
         expect(r.at(-1)).not.toBe(obj);
       });
 
-      const t = <T,>(id: [title: string, a: T[], b: T[], c: T[], d: T[]]) => id;
+      const t = <T>(id: [title: string, a: T[], b: T[], c: T[], d: T[]]) => id;
       describe.each([
         t(["number", [1, 2], [1, 2, 3], [1], [2]]),
         t(["bigint", [1n, 2n], [1n, 2n, 3n], [1n], [2n]]),
@@ -303,7 +303,7 @@ describe("reconcile", function () {
     });
 
     describe("Set", function () {
-      const t = <T,>(
+      const t = <T>(
         title: string,
         a: Set<T>,
         b: Set<T>,
@@ -459,5 +459,48 @@ describe("reconcile", function () {
         expect(r.get("y")).not.toBe(y);
       });
     });
+  });
+
+  describe("froze", function () {
+    test("Object.freeze()", function () {
+      const a = {
+        a: [{ x: 1 }],
+        b: {},
+      };
+
+      const b = structuredClone(a);
+      b.a[0].x = 2;
+
+      // Freezing
+      Object.freeze(b);
+      Object.freeze(b.a);
+      Object.freeze(b.a[0]);
+      Object.freeze(a);
+      Object.freeze(a.a);
+      Object.freeze(a.a[0]);
+
+      // b -> a
+      const result = reconcile(a, b);
+      expect(result).not.toBe(a);
+      expect(result).not.toBe(b);
+      expect(result.a[0].x).toBe(2);
+      expect(result.b).toBe(a.b);
+
+      // a -> b
+      const result2 = reconcile(b, a);
+      expect(result2).not.toBe(a);
+      expect(result2).not.toBe(b);
+      expect(result2.a[0].x).toBe(1);
+      expect(result2.b).toBe(b.b);
+    });
+  });
+
+  test("docs test", function () {
+    const current = { x: {} };
+    const next = { x: {}, y: {} };
+
+    const result = reconcile(current, next);
+
+    expect(result.x).toBe(current.x);
   });
 });
