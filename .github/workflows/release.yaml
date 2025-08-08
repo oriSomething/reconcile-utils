@@ -36,6 +36,8 @@ jobs:
         run: pnpm build
 
       - name: publish
-        run: pnpm publish --no-git-checks --access public
+        run: |
+          pnpm config set //registry.npmjs.org/:_authToken=$NPM_TOKEN
+          pnpm publish --no-git-checks --access public
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
