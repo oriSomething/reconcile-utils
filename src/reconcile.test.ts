@@ -182,7 +182,7 @@ describe("reconcile", function () {
     });
 
     describe("Object", function () {
-      test("differnt symbols", function () {
+      test("different symbols", function () {
         const a = { x: 1, [Symbol("a")]: 2 };
         const b = { x: 1, [Symbol("b")]: 2 };
         const r = reconcile(a, b);
@@ -376,7 +376,7 @@ describe("reconcile", function () {
     });
 
     describe("Map", function () {
-      test("differnt symbols", function () {
+      test("different symbols", function () {
         const a = new Map<any, any>([
           ["x", 1],
           [Symbol("a"), 2],

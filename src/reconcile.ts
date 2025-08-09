@@ -225,7 +225,7 @@ export function reconcile<T, U>(current: T, next: U): ReconcileResult<T, U> {
   const currentCategory = getCategory(current);
   const nextCategory = getCategory(next);
 
-  // We gaurd at root for the same type to prevent silly mistakes
+  // We guard at root for the same type to prevent silly mistakes
   if (
     currentCategory === CATEGORY_NIL ||
     nextCategory === CATEGORY_NIL ||
