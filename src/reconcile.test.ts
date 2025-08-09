@@ -4,19 +4,15 @@ import { reconcile } from "./reconcile";
 describe("reconcile", function () {
   describe("errors", function () {
     test("should when value is a function", function () {
-      interface T {
-        a: (() => void) | null;
-      }
-
       const errorMessage = `reconcile(): The key "a" is function which isn't supported`;
 
-      expect(() => reconcile<T>({ a() {} }, { a() {} })).toThrowError(
+      expect(() => reconcile({ a() {} }, { a() {} })).toThrowError(
         errorMessage,
       );
-      expect(() => reconcile<T>({ a: null }, { a() {} })).toThrowError(
+      expect(() => reconcile({ a: null }, { a() {} })).toThrowError(
         errorMessage,
       );
-      expect(() => reconcile<T>({ a() {} }, { a: null })).toThrowError(
+      expect(() => reconcile({ a() {} }, { a: null })).toThrowError(
         errorMessage,
       );
     });
@@ -28,6 +24,7 @@ describe("reconcile", function () {
       expect(() => reconcile(new Set(), new Set([{}]))).toThrowError(
         errorMessage,
       );
+
       expect(() => reconcile(new Set(), new Set([[]]))).toThrowError(
         errorMessage,
       );
@@ -160,18 +157,18 @@ describe("reconcile", function () {
     test.each([null, undefined])(
       "Convert any value to %s at root",
       function (value) {
-        expect(reconcile<any>({}, value)).toBe(value);
-        expect(reconcile<any>([], value)).toBe(value);
-        expect(reconcile<any>(new Date(), value)).toBe(value);
-        expect(reconcile<any>(new Set(), value)).toBe(value);
-        expect(reconcile<any>(new Map(), value)).toBe(value);
-        expect(reconcile<any>(1, value)).toBe(value);
-        expect(reconcile<any>("1", value)).toBe(value);
-        expect(reconcile<any>(true, value)).toBe(value);
-        expect(reconcile<any>(1n, value)).toBe(value);
-        expect(reconcile<any>(NaN, value)).toBe(value);
-        expect(reconcile<any>(undefined, value)).toBe(value);
-        expect(reconcile<any>(null, value)).toBe(value);
+        expect(reconcile({}, value)).toBe(value);
+        expect(reconcile([], value)).toBe(value);
+        expect(reconcile(new Date(), value)).toBe(value);
+        expect(reconcile(new Set(), value)).toBe(value);
+        expect(reconcile(new Map(), value)).toBe(value);
+        expect(reconcile(1, value)).toBe(value);
+        expect(reconcile("1", value)).toBe(value);
+        expect(reconcile(true, value)).toBe(value);
+        expect(reconcile(1n, value)).toBe(value);
+        expect(reconcile(NaN, value)).toBe(value);
+        expect(reconcile(undefined, value)).toBe(value);
+        expect(reconcile(null, value)).toBe(value);
       },
     );
 
@@ -205,7 +202,7 @@ describe("reconcile", function () {
       test("less items", function () {
         const a = { x: 1, y: 2 };
         const b = { x: 1 };
-        const r = reconcile<any>(a, b);
+        const r = reconcile(a, b);
         expect(r).not.toStrictEqual(a);
         expect(r).toStrictEqual(b);
       });
@@ -213,7 +210,7 @@ describe("reconcile", function () {
       test("different values", function () {
         const a = { x: 1, y: 1 };
         const b = { x: 1, y: null };
-        const r = reconcile<any>(a, b);
+        const r = reconcile(a, b);
         expect(r).not.toStrictEqual(a);
         expect(r).toStrictEqual(b);
       });
@@ -411,7 +408,7 @@ describe("reconcile", function () {
           ["y", 2],
         ]);
         const b = new Map([["x", 1]]);
-        const r = reconcile<any>(a, b);
+        const r = reconcile(a, b);
         expect(r).not.toStrictEqual(a);
         expect(r).toStrictEqual(b);
       });
@@ -425,7 +422,7 @@ describe("reconcile", function () {
           ["x", 1],
           ["y", null],
         ]);
-        const r = reconcile<any>(a, b);
+        const r = reconcile(a, b);
         expect(r).not.toStrictEqual(a);
         expect(r).toStrictEqual(b);
       });
