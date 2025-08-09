@@ -3,7 +3,7 @@
  * @see https://github.com/TanStack/query/blob/main/packages/query-core/src/utils.ts#L251
  */
 
-import type { ReadonlyDeep, Primitive } from "type-fest";
+import type { Primitive } from "type-fest";
 import { getDisplayTypeOf, isPrimitive, keys } from "./utils/type-utils";
 import {
   CATEGORY_ARRAY,
@@ -16,6 +16,7 @@ import {
   CATEGORY_UNSUPPORTED,
   getCategory,
 } from "./utils/category";
+import type { ReconcileResult } from "./utils/reconcile-result";
 
 type ReadonlySetItem<T> = T extends ReadonlySet<infer V> ? V : never;
 type ReadonlyMapItem<T> = T extends ReadonlyMap<unknown, infer V> ? V : never;
@@ -220,20 +221,21 @@ function reconcileObject<T extends Record<PropertyKey, unknown>>(
 /**
  * @returns The value of current if all values are the same
  */
-export function reconcile<T>(
-  current: ReadonlyDeep<T>,
-  next: ReadonlyDeep<NoInfer<T>>,
-): ReadonlyDeep<T> {
+export function reconcile<T, U = T>(
+  current: T,
+  next: U,
+): ReconcileResult<T, U> {
   const currentCategory = getCategory(current);
   const nextCategory = getCategory(next);
 
-  // We gaurd at root for the same type to prevent silly mistakes
+  // We guard at root for the same type to prevent silly mistakes
   if (
     currentCategory === CATEGORY_NIL ||
     nextCategory === CATEGORY_NIL ||
     currentCategory === nextCategory
   ) {
-    return reconcileValue(current, next, undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- we fake types to provide better types
+    return reconcileValue<any>(current, next, undefined);
   }
 
   throw new TypeError(
