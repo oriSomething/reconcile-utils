@@ -9,9 +9,9 @@ describe("reconcile", function () {
       expect(() => reconcile({ a() {} }, { a() {} })).toThrowError(
         errorMessage,
       );
-      expect(() => reconcile({ a: null }, { a() {} })).toThrowError(
-        errorMessage,
-      );
+      expect(() =>
+        reconcile<{ a: null | (() => void) }>({ a: null }, { a() {} }),
+      ).toThrowError(errorMessage);
       expect(() => reconcile({ a() {} }, { a: null })).toThrowError(
         errorMessage,
       );

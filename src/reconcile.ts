@@ -221,7 +221,10 @@ function reconcileObject<T extends Record<PropertyKey, unknown>>(
 /**
  * @returns The value of current if all values are the same
  */
-export function reconcile<T, U>(current: T, next: U): ReconcileResult<T, U> {
+export function reconcile<T, U = T>(
+  current: T,
+  next: U,
+): ReconcileResult<T, U> {
   const currentCategory = getCategory(current);
   const nextCategory = getCategory(next);
 
